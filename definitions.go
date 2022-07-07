@@ -83,6 +83,18 @@ func (p *provider) RemoteChange(item RemoteItem) {
 	p.remoteChange <- <-p.remoteChange
 }
 
+func (f CommitedFlag) ToString() string {
+	switch f {
+	case CommitedYes:
+		return "CommitedYes"
+	case CommitedNo:
+		return "CommitedNo"
+	case CommitedAwaitingDeletion:
+		return "CommitedAwaitingDeletion"
+	}
+	return ""
+}
+
 func (d DecisionFlag) ToString() string {
 	switch d {
 	case DecisionUploadLocal:
