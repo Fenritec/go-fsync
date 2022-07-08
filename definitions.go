@@ -2,6 +2,7 @@ package fsync
 
 type (
 	Provider interface {
+		CheckChanges(rPath string) error
 		DoInitialSync() error
 	}
 

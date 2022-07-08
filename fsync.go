@@ -14,11 +14,15 @@ func NewProvider(l LocalFS, r RemoteFS, d DecisionCallback) Provider {
 }
 
 func (p *provider) DoInitialSync() error {
-	_, err := p.CheckChanges("/", false, false)
+	return p.CheckChanges("/")
+}
+
+func (p *provider) CheckChanges(rPath string) error {
+	_, err := p.checkChanges(rPath, false, false)
 	return err
 }
 
-func (p *provider) CheckChanges(relativePath string, localDeleted, remoteDeleted bool) (deleted bool, err error) {
+func (p *provider) checkChanges(relativePath string, localDeleted, remoteDeleted bool) (deleted bool, err error) {
 	lis, err := p.local.GetChildren(relativePath)
 	if err != nil {
 		return false, err
@@ -36,7 +40,7 @@ func (p *provider) CheckChanges(relativePath string, localDeleted, remoteDeleted
 	for _, e := range exp {
 		if e.Commited == CommitedYes {
 			if e.Dir {
-				deleted, err := p.CheckChanges(e.RelativePath, true, false)
+				deleted, err := p.checkChanges(e.RelativePath, true, false)
 				if err != nil {
 					return false, err
 				}
@@ -62,7 +66,7 @@ func (p *provider) CheckChanges(relativePath string, localDeleted, remoteDeleted
 						Flag:         DecisionCreateDirRemote,
 						RelativePath: e.RelativePath,
 					})
-					if _, err := p.CheckChanges(e.RelativePath, false, false); err != nil {
+					if _, err := p.checkChanges(e.RelativePath, false, false); err != nil {
 						return false, err
 					}
 				}
@@ -82,7 +86,7 @@ func (p *provider) CheckChanges(relativePath string, localDeleted, remoteDeleted
 				Flag:         DecisionCreateDirLocal,
 				RelativePath: i.RelativePath,
 			})
-			if _, err := p.CheckChanges(i.RelativePath, false, false); err != nil {
+			if _, err := p.checkChanges(i.RelativePath, false, false); err != nil {
 				return false, err
 			}
 		} else {
@@ -121,7 +125,7 @@ func (p *provider) CheckChanges(relativePath string, localDeleted, remoteDeleted
 					Flag:         DecisionCreateDirLocal,
 					RelativePath: c.li.RelativePath,
 				})
-				if _, err := p.CheckChanges(c.li.RelativePath, false, false); err != nil {
+				if _, err := p.checkChanges(c.li.RelativePath, false, false); err != nil {
 					return false, err
 				}
 			} else {
@@ -134,7 +138,7 @@ func (p *provider) CheckChanges(relativePath string, localDeleted, remoteDeleted
 				}
 				// If it is a dir continue the inspection
 				if c.li.Dir {
-					if _, err := p.CheckChanges(c.li.RelativePath, false, false); err != nil {
+					if _, err := p.checkChanges(c.li.RelativePath, false, false); err != nil {
 						return false, err
 					}
 				}
@@ -150,7 +154,7 @@ func (p *provider) CheckChanges(relativePath string, localDeleted, remoteDeleted
 						Flag:         DecisionCreateDirLocal,
 						RelativePath: c.li.RelativePath,
 					})
-					if _, err := p.CheckChanges(c.li.RelativePath, false, false); err != nil {
+					if _, err := p.checkChanges(c.li.RelativePath, false, false); err != nil {
 						return false, err
 					}
 				} else {
@@ -162,7 +166,7 @@ func (p *provider) CheckChanges(relativePath string, localDeleted, remoteDeleted
 			} else if c.li.Dir && !c.li.Dir {
 				// Dir locally and file remotely
 				if c.li.Commited != CommitedAwaitingDeletion {
-					deleted, err := p.CheckChanges(c.li.RelativePath, false, false)
+					deleted, err := p.checkChanges(c.li.RelativePath, false, false)
 					if err != nil {
 						return false, err
 					}
@@ -187,11 +191,11 @@ func (p *provider) CheckChanges(relativePath string, localDeleted, remoteDeleted
 				// Both are directories
 				if c.li.Commited == CommitedAwaitingDeletion {
 					// Local dir wants to be deleted
-					if _, err := p.CheckChanges(c.li.RelativePath, false, true); err != nil {
+					if _, err := p.checkChanges(c.li.RelativePath, false, true); err != nil {
 						return false, err
 					}
 				} else {
-					if _, err := p.CheckChanges(c.li.RelativePath, false, false); err != nil {
+					if _, err := p.checkChanges(c.li.RelativePath, false, false); err != nil {
 						return false, err
 					}
 				}
