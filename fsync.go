@@ -55,13 +55,13 @@ func (p *provider) checkChanges(relativePath string, localDeleted, remoteDeleted
 				expDeleted += 1
 			}
 		} else {
-			if e.Dir {
-				if e.Commited == CommitedAwaitingDeletion {
-					p.out(Decision{
-						Flag:         DecisionDeleteLocal,
-						RelativePath: e.RelativePath,
-					})
-				} else {
+			if e.Commited == CommitedAwaitingDeletion {
+				p.out(Decision{
+					Flag:         DecisionDeleteLocal,
+					RelativePath: e.RelativePath,
+				})
+			} else {
+				if e.Dir {
 					p.out(Decision{
 						Flag:         DecisionCreateDirRemote,
 						RelativePath: e.RelativePath,
@@ -69,12 +69,12 @@ func (p *provider) checkChanges(relativePath string, localDeleted, remoteDeleted
 					if _, err := p.checkChanges(e.RelativePath, false, false); err != nil {
 						return false, err
 					}
+				} else {
+					p.out(Decision{
+						Flag:         DecisionUploadLocal,
+						RelativePath: e.RelativePath,
+					})
 				}
-			} else {
-				p.out(Decision{
-					Flag:         DecisionUploadLocal,
-					RelativePath: e.RelativePath,
-				})
 			}
 		}
 	}

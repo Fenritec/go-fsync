@@ -68,6 +68,7 @@ const (
 	DecisionDeleteLocal
 	DecisionDeleteRemote
 	DecisionConflict
+	DecisionDeleteMetadata
 )
 
 const (
