@@ -316,6 +316,24 @@ func TestProvider(t *testing.T) {
 		testScenario(t, localStatus, remoteStatus, expectedDecisions)
 	})
 
+	t.Run("New files on remote", func(t *testing.T) {
+		localStatus := fsync.LocalItems{
+			{RelativePath: "/a", Dir: true, Commited: fsync.CommitedYes},
+			{RelativePath: "/a/b", Dir: false, Commited: fsync.CommitedYes, Etag: "v1"},
+		}
+
+		remoteStatus := fsync.RemoteItems{
+			{RelativePath: "/a", Dir: true, Etag: ""},
+			{RelativePath: "/a/b", Dir: false, Etag: "v2"},
+		}
+
+		expectedDecisions := []fsync.Decision{
+			{RelativePath: "/a/b", Flag: fsync.DecisionDownloadRemote},
+		}
+
+		testScenario(t, localStatus, remoteStatus, expectedDecisions)
+	})
+
 	t.Run("Local awaiting deletion but no remote file", func(t *testing.T) {
 		localStatus := fsync.LocalItems{
 			{RelativePath: "/a", Dir: true, Commited: fsync.CommitedYes},

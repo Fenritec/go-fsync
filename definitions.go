@@ -4,13 +4,14 @@ type (
 	Provider interface {
 		CheckChanges(rPath string) error
 		DoInitialSync() error
+		CheckDecision(d Decision) (ok bool)
 	}
 
 	provider struct {
 		local  LocalFS
 		remote RemoteFS
 
-		out          DecisionCallback
+		takeDecision DecisionCallback
 		localChange  chan (LocalItem)
 		remoteChange chan (RemoteItem)
 	}
@@ -44,8 +45,9 @@ type (
 	RemoteItems []RemoteItem
 
 	Decision struct {
-		RelativePath string
-		Flag         DecisionFlag
+		RelativePath    string
+		Flag            DecisionFlag
+		RemoteValidEtag string
 	}
 
 	DecisionCallback func(Decision)
@@ -69,6 +71,8 @@ const (
 	DecisionDeleteRemote
 	DecisionConflict
 	DecisionDeleteMetadata
+	DecisionDeleteLocalAndCreateDirLocal
+	DecisionDeleteLocalAndDownloadRemote
 )
 
 const (
@@ -113,6 +117,10 @@ func (d DecisionFlag) ToString() string {
 		return "DecisionDeleteRemote"
 	case DecisionConflict:
 		return "DecisionConflict"
+	case DecisionDeleteLocalAndCreateDirLocal:
+		return "DecisionDeleteLocalAndCreateDirLocal"
+	case DecisionDeleteLocalAndDownloadRemote:
+		return "DecisionDeleteLocalAndDownloadRemote"
 	}
 	return ""
 }
