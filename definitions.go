@@ -4,7 +4,7 @@ type (
 	Provider interface {
 		CheckChanges(rPath string) error
 		DoInitialSync() error
-		CheckDecision(d Decision) (ok bool)
+		CheckDecision(d Decision) (err error, ok bool)
 	}
 
 	provider struct {
@@ -48,6 +48,7 @@ type (
 		RelativePath    string
 		Flag            DecisionFlag
 		RemoteValidEtag string
+		RemoteIsDir     bool
 	}
 
 	DecisionCallback func(Decision)

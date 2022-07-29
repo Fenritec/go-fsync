@@ -77,6 +77,12 @@ func testScenario(t *testing.T, lst fsync.LocalItems, rst fsync.RemoteItems, exp
 	for _, d := range expectedDecisions {
 		assert.Equal(t, true, IsDecisionPresent(d, decisions))
 	}
+
+	for _, d := range decisions {
+		err, ok := p.CheckDecision(d)
+		require.NoError(t, err)
+		assert.Equal(t, true, ok)
+	}
 }
 
 func TestProvider(t *testing.T) {
