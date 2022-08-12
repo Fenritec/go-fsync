@@ -1,6 +1,7 @@
 package fsync_test
 
 import (
+	"context"
 	"path"
 	"testing"
 	"time"
@@ -50,6 +51,9 @@ func IsDecisionPresent(d fsync.Decision, in []fsync.Decision) bool {
 }
 
 func testScenario(t *testing.T, lst fsync.LocalItems, rst fsync.RemoteItems, expectedDecisions []fsync.Decision) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	lFS := localFS{
 		status: lst,
 	}
@@ -64,7 +68,7 @@ func testScenario(t *testing.T, lst fsync.LocalItems, rst fsync.RemoteItems, exp
 	})
 
 	p := fsync.NewProvider(&lFS, &rFS, cb)
-	err := p.DoInitialSync()
+	err := p.DoInitialSync(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(1 * time.Millisecond)
@@ -79,7 +83,7 @@ func testScenario(t *testing.T, lst fsync.LocalItems, rst fsync.RemoteItems, exp
 	}
 
 	for _, d := range decisions {
-		err, ok := p.CheckDecision(d)
+		err, ok := p.CheckDecision(ctx, d)
 		require.NoError(t, err)
 		assert.Equal(t, true, ok)
 	}

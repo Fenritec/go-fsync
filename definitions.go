@@ -1,10 +1,12 @@
 package fsync
 
+import "context"
+
 type (
 	Provider interface {
-		CheckChanges(rPath string) error
-		DoInitialSync() error
-		CheckDecision(d Decision) (err error, ok bool)
+		CheckChanges(ctx context.Context, rPath string) error
+		DoInitialSync(ctx context.Context) error
+		CheckDecision(ctx context.Context, d Decision) (err error, ok bool)
 	}
 
 	provider struct {
