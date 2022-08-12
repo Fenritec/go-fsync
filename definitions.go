@@ -53,7 +53,7 @@ type (
 		RemoteIsDir     bool
 	}
 
-	DecisionCallback func(Decision)
+	DecisionCallback func(context.Context, Decision)
 
 	DecisionFlag int
 

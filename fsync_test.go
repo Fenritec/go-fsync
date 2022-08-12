@@ -63,7 +63,7 @@ func testScenario(t *testing.T, lst fsync.LocalItems, rst fsync.RemoteItems, exp
 	}
 
 	decisions := []fsync.Decision{}
-	cb := fsync.DecisionCallback(func(d fsync.Decision) {
+	cb := fsync.DecisionCallback(func(ctx context.Context, d fsync.Decision) {
 		decisions = append(decisions, d)
 	})
 

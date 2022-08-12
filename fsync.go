@@ -63,7 +63,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 					expDeleted += 1
 				}
 			} else {
-				takeDecision(Decision{
+				takeDecision(ctx, Decision{
 					Flag:            DecisionDeleteLocal,
 					RelativePath:    e.RelativePath,
 					RemoteValidEtag: e.Etag,
@@ -73,7 +73,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 			}
 		} else {
 			if e.Commited == CommitedAwaitingDeletion {
-				takeDecision(Decision{
+				takeDecision(ctx, Decision{
 					Flag:            DecisionDeleteLocal,
 					RelativePath:    e.RelativePath,
 					RemoteValidEtag: e.Etag,
@@ -81,7 +81,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 				})
 			} else {
 				if e.Dir {
-					takeDecision(Decision{
+					takeDecision(ctx, Decision{
 						Flag:            DecisionCreateDirRemote,
 						RelativePath:    e.RelativePath,
 						RemoteValidEtag: e.Etag,
@@ -91,7 +91,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 						return false, err
 					}
 				} else {
-					takeDecision(Decision{
+					takeDecision(ctx, Decision{
 						Flag:            DecisionUploadLocal,
 						RelativePath:    e.RelativePath,
 						RemoteValidEtag: e.Etag,
@@ -105,7 +105,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 	// Importing
 	for _, i := range imp {
 		if i.Dir {
-			takeDecision(Decision{
+			takeDecision(ctx, Decision{
 				Flag:            DecisionCreateDirLocal,
 				RelativePath:    i.RelativePath,
 				RemoteValidEtag: i.Etag,
@@ -115,7 +115,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 				return false, err
 			}
 		} else {
-			takeDecision(Decision{
+			takeDecision(ctx, Decision{
 				Flag:            DecisionDownloadRemote,
 				RelativePath:    i.RelativePath,
 				RemoteValidEtag: i.Etag,
@@ -133,7 +133,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 			if c.li.Dir && !c.ri.Dir {
 				// We have a file instead of a dir on the server
 				// Delete the local dir and dowload the file locally
-				takeDecision(Decision{
+				takeDecision(ctx, Decision{
 					Flag:            DecisionDeleteLocalAndDownloadRemote,
 					RelativePath:    c.li.RelativePath,
 					RemoteValidEtag: c.ri.Etag,
@@ -142,7 +142,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 			} else if !c.li.Dir && c.li.Dir {
 				// We have a dir instead of a file on the server
 				// Delete the local file and create a dir locally
-				takeDecision(Decision{
+				takeDecision(ctx, Decision{
 					Flag:            DecisionDeleteLocalAndCreateDirLocal,
 					RelativePath:    c.li.RelativePath,
 					RemoteValidEtag: c.ri.Etag,
@@ -154,7 +154,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 			} else {
 				// We have the same type on both side
 				if c.li.Etag != c.ri.Etag {
-					takeDecision(Decision{
+					takeDecision(ctx, Decision{
 						Flag:            DecisionDownloadRemote,
 						RelativePath:    c.li.RelativePath,
 						RemoteValidEtag: c.ri.Etag,
@@ -175,7 +175,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 				if c.li.Commited == CommitedAwaitingDeletion {
 					// Local item is a file awaiting deleting
 					// We could delete it and request file download
-					takeDecision(Decision{
+					takeDecision(ctx, Decision{
 						Flag:            DecisionCreateDirLocal,
 						RelativePath:    c.li.RelativePath,
 						RemoteValidEtag: c.ri.Etag,
@@ -185,7 +185,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 						return false, err
 					}
 				} else {
-					takeDecision(Decision{
+					takeDecision(ctx, Decision{
 						Flag:            DecisionConflict,
 						RelativePath:    c.li.RelativePath,
 						RemoteValidEtag: c.ri.Etag,
@@ -200,14 +200,14 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 						return false, err
 					}
 					if deleted {
-						takeDecision(Decision{
+						takeDecision(ctx, Decision{
 							Flag:            DecisionDownloadRemote,
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
 							RemoteIsDir:     c.ri.Dir,
 						})
 					} else {
-						takeDecision(Decision{
+						takeDecision(ctx, Decision{
 							Flag:            DecisionConflict,
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
@@ -215,7 +215,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 						})
 					}
 				} else {
-					takeDecision(Decision{
+					takeDecision(ctx, Decision{
 						Flag:            DecisionConflict,
 						RelativePath:    c.li.RelativePath,
 						RemoteValidEtag: c.ri.Etag,
@@ -239,7 +239,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 				if c.li.Commited == CommitedAwaitingDeletion {
 					if c.li.Etag == c.ri.Etag {
 						// Etags are matching so we can delete
-						takeDecision(Decision{
+						takeDecision(ctx, Decision{
 							Flag:            DecisionDeleteRemote,
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
@@ -247,7 +247,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 						})
 						conDeleted += 1
 					} else {
-						takeDecision(Decision{
+						takeDecision(ctx, Decision{
 							Flag:            DecisionConflict,
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
@@ -258,14 +258,14 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 					if c.li.Etag == c.ri.Etag {
 						// Assuming that li.Etag is containing the old etag
 						// So we upload
-						takeDecision(Decision{
+						takeDecision(ctx, Decision{
 							Flag:            DecisionUploadLocal,
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
 							RemoteIsDir:     c.ri.Dir,
 						})
 					} else {
-						takeDecision(Decision{
+						takeDecision(ctx, Decision{
 							Flag:            DecisionConflict,
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
@@ -282,7 +282,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 	// it means we can delete the folder
 	if len(exp) == expDeleted && len(imp) == 0 && len(con) == conDeleted {
 		if localDeleted {
-			takeDecision(Decision{
+			takeDecision(ctx, Decision{
 				Flag:            DecisionDeleteLocal,
 				RelativePath:    relativePath,
 				RemoteValidEtag: "",
@@ -291,7 +291,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, localD
 			return true, nil
 		}
 		if remoteDeleted {
-			takeDecision(Decision{
+			takeDecision(ctx, Decision{
 				Flag:            DecisionDeleteRemote,
 				RelativePath:    relativePath,
 				RemoteValidEtag: "",
@@ -395,7 +395,7 @@ func (p *provider) CheckDecision(ctx context.Context, d Decision) (err error, ok
 		} else if d.RemoteIsDir != ri.Dir {
 			return nil, false
 		} else {
-			deleted, err := p.checkChanges(ctx, d.RelativePath, false, true, DecisionCallback(func(d Decision) {}))
+			deleted, err := p.checkChanges(ctx, d.RelativePath, false, true, DecisionCallback(func(context.Context, Decision) {}))
 			if err != nil {
 				return err, false
 			}
