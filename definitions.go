@@ -16,6 +16,16 @@ type (
 		takeDecision DecisionCallback
 		localChange  chan (LocalItem)
 		remoteChange chan (RemoteItem)
+
+		remoteFSDeleteNonEmptyFolder bool
+		localFSDeleteNonEmptyFolder  bool
+	}
+
+	Options struct {
+		// RemoteFSDeleteNonEmptyFolder allows to delete the folder instead of all items + folder to avoid huge calls
+		RemoteFSDeleteNonEmptyFolder bool
+		// LocalFSDeleteNonEmptyFolder allows to delete the folder instead of all items + folder to avoid huge calls
+		LocalFSDeleteNonEmptyFolder bool
 	}
 
 	LocalFS interface {
@@ -53,7 +63,7 @@ type (
 		RemoteIsDir     bool
 	}
 
-	DecisionCallback func(context.Context, Decision)
+	DecisionCallback func(context.Context, Decision) error
 
 	DecisionFlag int
 
@@ -81,7 +91,7 @@ const (
 const (
 	CommitedYes = CommitedFlag(iota)
 	CommitedNo
-	CommitedAwaitingDeletion
+	CommitedAwaitingRemoteDeletion
 )
 
 func (p *provider) LocalChange(item LocalItem) {
@@ -98,7 +108,7 @@ func (f CommitedFlag) ToString() string {
 		return "CommitedYes"
 	case CommitedNo:
 		return "CommitedNo"
-	case CommitedAwaitingDeletion:
+	case CommitedAwaitingRemoteDeletion:
 		return "CommitedAwaitingDeletion"
 	}
 	return ""
