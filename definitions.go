@@ -1,6 +1,9 @@
 package fsync
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 type (
 	Provider interface {
@@ -61,6 +64,18 @@ type (
 		Flag            DecisionFlag
 		RemoteValidEtag string
 		RemoteIsDir     bool
+		Why             DecisionWhy
+	}
+
+	DecisionWhy struct {
+		LocalItemPresent  bool   `json:"local_item_present"`
+		LocalItemDir      bool   `json:"local_item_dir"`
+		LocalItemEtag     string `json:"local_item_etag"`
+		LocalItemCommited string `json:"local_item_commited"`
+
+		RemoteItemPresent bool   `json:"remote_item_present"`
+		RemoteItemDir     bool   `json:"remote_item_dir"`
+		RemoteItemEtag    string `json:"remote_item_etag"`
 	}
 
 	DecisionCallback func(context.Context, Decision) error
@@ -136,4 +151,28 @@ func (d DecisionFlag) ToString() string {
 		return "DecisionDeleteLocalAndDownloadRemote"
 	}
 	return ""
+}
+
+func newDecisionWhy(li *LocalItem, ri *RemoteItem) DecisionWhy {
+	d := DecisionWhy{}
+
+	if li != nil {
+		d.LocalItemCommited = li.Commited.ToString()
+		d.LocalItemDir = li.Dir
+		d.LocalItemEtag = li.Etag
+		d.LocalItemPresent = true
+	}
+
+	if ri != nil {
+		d.RemoteItemDir = ri.Dir
+		d.RemoteItemEtag = ri.Etag
+		d.RemoteItemPresent = true
+	}
+
+	return d
+}
+
+func (d DecisionWhy) ToJSONString() string {
+	data, _ := json.Marshal(d)
+	return string(data)
 }

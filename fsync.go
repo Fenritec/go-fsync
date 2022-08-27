@@ -73,6 +73,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 						RelativePath:    e.RelativePath,
 						RemoteValidEtag: "",
 						RemoteIsDir:     true,
+						Why:             newDecisionWhy(&e, nil),
 					})
 					expDeleted += 1
 				}
@@ -82,6 +83,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 					RelativePath:    e.RelativePath,
 					RemoteValidEtag: e.Etag,
 					RemoteIsDir:     e.Dir,
+					Why:             newDecisionWhy(&e, nil),
 				})
 				expDeleted += 1
 			}
@@ -92,6 +94,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 					RelativePath:    e.RelativePath,
 					RemoteValidEtag: e.Etag,
 					RemoteIsDir:     e.Dir,
+					Why:             newDecisionWhy(&e, nil),
 				})
 			} else {
 				if e.Dir {
@@ -100,6 +103,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 						RelativePath:    e.RelativePath,
 						RemoteValidEtag: e.Etag,
 						RemoteIsDir:     e.Dir,
+						Why:             newDecisionWhy(&e, nil),
 					}); err != nil {
 						return false, false, err
 					}
@@ -112,6 +116,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 						RelativePath:    e.RelativePath,
 						RemoteValidEtag: e.Etag,
 						RemoteIsDir:     e.Dir,
+						Why:             newDecisionWhy(&e, nil),
 					}); err != nil {
 						return false, false, err
 					}
@@ -128,6 +133,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 				RelativePath:    i.RelativePath,
 				RemoteValidEtag: i.Etag,
 				RemoteIsDir:     i.Dir,
+				Why:             newDecisionWhy(nil, &i),
 			}); err != nil {
 				return false, false, err
 			}
@@ -140,6 +146,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 				RelativePath:    i.RelativePath,
 				RemoteValidEtag: i.Etag,
 				RemoteIsDir:     i.Dir,
+				Why:             newDecisionWhy(nil, &i),
 			}); err != nil {
 				return false, false, err
 			}
@@ -163,6 +170,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 					RelativePath:    c.li.RelativePath,
 					RemoteValidEtag: c.ri.Etag,
 					RemoteIsDir:     c.ri.Dir,
+					Why:             newDecisionWhy(&c.li, &c.ri),
 				}
 				if deletedLocally {
 					d.Flag = DecisionDeleteLocalAndDownloadRemote
@@ -180,6 +188,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 					RelativePath:    c.li.RelativePath,
 					RemoteValidEtag: c.ri.Etag,
 					RemoteIsDir:     c.ri.Dir,
+					Why:             newDecisionWhy(&c.li, &c.ri),
 				}); err != nil {
 					return false, false, err
 				}
@@ -194,6 +203,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 						RelativePath:    c.li.RelativePath,
 						RemoteValidEtag: c.ri.Etag,
 						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
 					}); err != nil {
 						return false, false, err
 					}
@@ -217,6 +227,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 						RelativePath:    c.li.RelativePath,
 						RemoteValidEtag: c.ri.Etag,
 						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
 					}); err != nil {
 						return false, false, err
 					}
@@ -229,6 +240,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 						RelativePath:    c.li.RelativePath,
 						RemoteValidEtag: c.ri.Etag,
 						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
 					}); err != nil {
 						return false, false, err
 					}
@@ -247,6 +259,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
 							RemoteIsDir:     c.ri.Dir,
+							Why:             newDecisionWhy(&c.li, &c.ri),
 						}); err != nil {
 							return false, false, err
 						}
@@ -256,6 +269,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
 							RemoteIsDir:     c.ri.Dir,
+							Why:             newDecisionWhy(&c.li, &c.ri),
 						}); err != nil {
 							return false, false, err
 						}
@@ -267,6 +281,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 						RelativePath:    c.li.RelativePath,
 						RemoteValidEtag: c.ri.Etag,
 						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
 					}); err != nil {
 						return false, false, err
 					}
@@ -277,6 +292,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 						RelativePath:    c.li.RelativePath,
 						RemoteValidEtag: c.ri.Etag,
 						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
 					}); err != nil {
 						return false, false, err
 					}
@@ -295,6 +311,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: "",
 							RemoteIsDir:     true,
+							Why:             newDecisionWhy(&c.li, &c.ri),
 						})
 						conDeleted += 1
 					}
@@ -313,6 +330,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
 							RemoteIsDir:     c.ri.Dir,
+							Why:             newDecisionWhy(&c.li, &c.ri),
 						})
 						conDeleted += 1
 					} else {
@@ -321,6 +339,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
 							RemoteIsDir:     c.ri.Dir,
+							Why:             newDecisionWhy(&c.li, &c.ri),
 						}); err != nil {
 							return false, false, err
 						}
@@ -334,6 +353,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
 							RemoteIsDir:     c.ri.Dir,
+							Why:             newDecisionWhy(&c.li, &c.ri),
 						}); err != nil {
 							return false, false, err
 						}
@@ -343,6 +363,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
 							RemoteIsDir:     c.ri.Dir,
+							Why:             newDecisionWhy(&c.li, &c.ri),
 						}); err != nil {
 							return false, false, err
 						}
