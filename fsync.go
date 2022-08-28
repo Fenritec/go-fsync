@@ -357,7 +357,7 @@ func (p *provider) checkChanges(
 						conDeleted += 1
 					} else {
 						if err := takeDecision(ctx, Decision{
-							Flag:            DecisionConflict,
+							Flag:            DecisionDownloadRemote,
 							RelativePath:    c.li.RelativePath,
 							RemoteValidEtag: c.ri.Etag,
 							RemoteIsDir:     c.ri.Dir,

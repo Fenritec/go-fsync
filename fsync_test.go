@@ -406,4 +406,20 @@ func TestProvider(t *testing.T) {
 
 		testScenario(t, localStatus, remoteStatus, expectedDecisions)
 	})
+
+	t.Run("File deleted locally and new version remotely", func(t *testing.T) {
+		localStatus := fsync.LocalItems{
+			{RelativePath: "/a", Dir: false, Etag: "v1", Commited: fsync.CommitedAwaitingRemoteDeletion},
+		}
+
+		remoteStatus := fsync.RemoteItems{
+			{RelativePath: "/a", Dir: false, Etag: "v2"},
+		}
+
+		expectedDecisions := []fsync.Decision{
+			{RelativePath: "/a", Flag: fsync.DecisionDownloadRemote},
+		}
+
+		testScenario(t, localStatus, remoteStatus, expectedDecisions)
+	})
 }
