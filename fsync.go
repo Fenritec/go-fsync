@@ -31,11 +31,17 @@ func (p *provider) DoInitialSync(ctx context.Context) error {
 
 // Checks the changes from the requested relative path
 func (p *provider) CheckChanges(ctx context.Context, rPath string) error {
-	_, _, err := p.checkChanges(ctx, rPath, false, false, p.takeDecision)
+	_, _, err := p.checkChanges(ctx, rPath, false, false, "", p.takeDecision)
 	return err
 }
 
-func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLocalDeletion, tryRemoteDeletion bool, takeDecision DecisionCallback) (deletedLocally, deletedRemotely bool, err error) {
+func (p *provider) checkChanges(
+	ctx context.Context,
+	relativePath string,
+	tryLocalDeletion,
+	tryRemoteDeletion bool,
+	keepOnlyChildRPath string,
+	takeDecision DecisionCallback) (deletedLocally, deletedRemotely bool, err error) {
 	select {
 	case <-ctx.Done():
 		return false, false, context.Canceled
@@ -53,6 +59,22 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 		return false, false, err
 	}
 
+	if keepOnlyChildRPath != "" {
+		for i := len(lis) - 1; i >= 0; i-- {
+			if lis[i].RelativePath != keepOnlyChildRPath {
+				lis[i] = lis[len(lis)-1]
+				lis = lis[:len(lis)-1]
+			}
+		}
+
+		for i := len(ris) - 1; i >= 0; i-- {
+			if ris[i].RelativePath != keepOnlyChildRPath {
+				ris[i] = ris[len(ris)-1]
+				ris = ris[:len(ris)-1]
+			}
+		}
+	}
+
 	exp, imp, con := p.classifyGroups(lis, ris)
 
 	deleteLocals := []Decision{}
@@ -63,7 +85,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 	for _, e := range exp {
 		if e.Commited == CommitedYes {
 			if e.Dir {
-				deletedLocally, _, err := p.checkChanges(ctx, e.RelativePath, true, false, takeDecision)
+				deletedLocally, _, err := p.checkChanges(ctx, e.RelativePath, true, false, "", takeDecision)
 				if err != nil {
 					return false, false, err
 				}
@@ -107,7 +129,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 					}); err != nil {
 						return false, false, err
 					}
-					if _, _, err := p.checkChanges(ctx, e.RelativePath, false, false, takeDecision); err != nil {
+					if _, _, err := p.checkChanges(ctx, e.RelativePath, false, false, "", takeDecision); err != nil {
 						return false, false, err
 					}
 				} else {
@@ -137,7 +159,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 			}); err != nil {
 				return false, false, err
 			}
-			if _, _, err := p.checkChanges(ctx, i.RelativePath, false, false, takeDecision); err != nil {
+			if _, _, err := p.checkChanges(ctx, i.RelativePath, false, false, "", takeDecision); err != nil {
 				return false, false, err
 			}
 		} else {
@@ -162,7 +184,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 			if c.li.Dir && !c.ri.Dir {
 				// We have a file instead of a dir on the server
 				// Check if we can delete the local dir and dowload the file locally
-				deletedLocally, _, err := p.checkChanges(ctx, c.li.RelativePath, true, false, func(ctx context.Context, d Decision) error { return ctx.Err() })
+				deletedLocally, _, err := p.checkChanges(ctx, c.li.RelativePath, true, false, "", func(ctx context.Context, d Decision) error { return ctx.Err() })
 				if err != nil {
 					return false, false, err
 				}
@@ -192,7 +214,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 				}); err != nil {
 					return false, false, err
 				}
-				if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, takeDecision); err != nil {
+				if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
 					return false, false, err
 				}
 			} else {
@@ -210,7 +232,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 				}
 				// If it is a dir continue the inspection
 				if c.li.Dir {
-					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, takeDecision); err != nil {
+					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
 						return false, false, err
 					}
 				}
@@ -231,7 +253,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 					}); err != nil {
 						return false, false, err
 					}
-					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, takeDecision); err != nil {
+					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
 						return false, false, err
 					}
 				} else {
@@ -249,7 +271,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 				// Dir locally and file remotely
 				if c.li.Commited == CommitedYes {
 					// If local dir is not awaiting deletion
-					deletedLocally, _, err := p.checkChanges(ctx, c.li.RelativePath, true, false, takeDecision)
+					deletedLocally, _, err := p.checkChanges(ctx, c.li.RelativePath, true, false, "", takeDecision)
 					if err != nil {
 						return false, false, err
 					}
@@ -301,7 +323,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 				// Both are directories
 				if c.li.Commited == CommitedAwaitingRemoteDeletion {
 					// Local dir wants to be deleted
-					_, deletedRemotely, err := p.checkChanges(ctx, c.li.RelativePath, false, true, takeDecision)
+					_, deletedRemotely, err := p.checkChanges(ctx, c.li.RelativePath, false, true, "", takeDecision)
 					if err != nil {
 						return false, false, err
 					}
@@ -316,7 +338,7 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 						conDeleted += 1
 					}
 				} else {
-					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, takeDecision); err != nil {
+					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
 						return false, false, err
 					}
 				}
@@ -377,41 +399,27 @@ func (p *provider) checkChanges(ctx context.Context, relativePath string, tryLoc
 	// And there is no conflict
 	// it means we can delete the folder
 	if len(exp) == expDeleted && len(imp) == 0 && len(con) == conDeleted {
-		if tryLocalDeletion {
-			if !p.localFSDeleteNonEmptyFolder {
-				for _, deleteLocal := range deleteLocals {
-					if err := takeDecision(ctx, deleteLocal); err != nil {
-						return false, false, err
-					}
-				}
-			}
-			return true, false, nil
-		}
-		if tryRemoteDeletion {
-			if !p.remoteFSDeleteNonEmptyFolder {
-				for _, deledeleteRemote := range deleteRemotes {
-					if err := takeDecision(ctx, deledeleteRemote); err != nil {
-						return false, false, err
-					}
-				}
-			}
-			return false, true, nil
-		}
-	} else {
-		// No request to delete locally or remotely
+		deletedLocally = tryLocalDeletion
+		deletedRemotely = tryRemoteDeletion
+	}
+
+	if !p.localFSDeleteNonEmptyFolder || !deletedLocally {
 		for _, deleteLocal := range deleteLocals {
 			if err := takeDecision(ctx, deleteLocal); err != nil {
 				return false, false, err
 			}
 		}
-		for _, deledeleteRemote := range deleteRemotes {
-			if err := takeDecision(ctx, deledeleteRemote); err != nil {
+	}
+
+	if !p.remoteFSDeleteNonEmptyFolder || !deletedRemotely {
+		for _, deleteRemote := range deleteRemotes {
+			if err := takeDecision(ctx, deleteRemote); err != nil {
 				return false, false, err
 			}
 		}
 	}
 
-	return false, false, nil
+	return
 }
 
 func (p *provider) classifyGroups(lis LocalItems, ris RemoteItems) (exp LocalItems, imp RemoteItems, con Conflicts) {
@@ -462,66 +470,24 @@ func (p *provider) classifyGroups(lis LocalItems, ris RemoteItems) (exp LocalIte
 
 // CheckDecision verifies if the decision is still ok after a certain amount of time
 func (p *provider) CheckDecision(ctx context.Context, d Decision) (err error, ok bool) {
-	var ri *RemoteItem
-
-	ris, err := p.remote.GetChildren(path.Base(d.RelativePath))
+	var newDecision *Decision
+	_, _, err = p.checkChanges(ctx, path.Dir(d.RelativePath), false, false, d.RelativePath, func(ctx context.Context, d2 Decision) error {
+		if d.RelativePath == d2.RelativePath {
+			newDecision = &d2
+		}
+		return nil
+	})
 	if err != nil {
 		return err, false
-	} else {
-		for _, lRi := range ris {
-			if lRi.RelativePath == d.RelativePath {
-				ri = &lRi
-				break
-			}
-		}
 	}
 
-	switch d.Flag {
-	case DecisionCreateDirLocal:
-		// No impact as if remote changes this can be downloader later
+	if newDecision != nil &&
+		newDecision.RelativePath == d.RelativePath &&
+		newDecision.Flag == d.Flag &&
+		newDecision.RemoteValidEtag == d.RemoteValidEtag &&
+		newDecision.RemoteIsDir == d.RemoteIsDir {
 		return nil, true
-	case DecisionCreateDirRemote:
-		if ri == nil {
-			return nil, true
-		}
-		return nil, ri.Dir
-	case DecisionDownloadRemote:
-		// No impact as remote change was already there
-		return nil, true
-	case DecisionDeleteLocal:
-		// No impact as if remote changes this can be downloader later
-		return nil, true
-	case DecisionConflict:
-		// Conflict must be handled by the middleware
-		return nil, true
-	case DecisionDeleteRemote:
-		if ri == nil {
-			return nil, true
-		}
-
-		// Both files
-		if !d.RemoteIsDir && !ri.Dir {
-			return nil, ri.Etag == d.RemoteValidEtag
-		} else if d.RemoteIsDir != ri.Dir {
-			return nil, false
-		} else {
-			_, deletedRemotely, err := p.checkChanges(ctx, d.RelativePath, false, true,
-				DecisionCallback(func(ctx context.Context, d Decision) error { return ctx.Err() }),
-			)
-			if err != nil {
-				return err, false
-			}
-			return nil, deletedRemotely
-		}
-	case DecisionDeleteLocalAndCreateDirLocal:
-		fallthrough
-	case DecisionDeleteLocalAndDownloadRemote:
-		fallthrough
-	case DecisionUploadLocal:
-		if ri == nil {
-			return nil, true
-		}
-		return nil, ri.Etag == d.RemoteValidEtag
 	}
+
 	return nil, false
 }

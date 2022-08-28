@@ -4,7 +4,6 @@ import (
 	"context"
 	"path"
 	"testing"
-	"time"
 
 	"github.com/fenritec/go-fsync"
 	"github.com/stretchr/testify/require"
@@ -76,7 +75,6 @@ func testScenarioWithOptions(t *testing.T, lst fsync.LocalItems, rst fsync.Remot
 	err := p.DoInitialSync(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(1 * time.Millisecond)
 	t.Logf("%d decisions made", len(decisions))
 	for _, d := range decisions {
 		t.Logf("Decision flag %s, relativePath: %s", d.Flag.ToString(), d.RelativePath)
@@ -88,6 +86,7 @@ func testScenarioWithOptions(t *testing.T, lst fsync.LocalItems, rst fsync.Remot
 	}
 
 	for _, d := range decisions {
+		t.Logf("Checking decision flag %s, relativePath: %s", d.Flag.ToString(), d.RelativePath)
 		err, ok := p.CheckDecision(ctx, d)
 		require.NoError(t, err)
 		assert.Equal(t, true, ok)

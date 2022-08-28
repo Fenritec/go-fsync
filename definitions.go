@@ -98,7 +98,6 @@ const (
 	DecisionDeleteLocal
 	DecisionDeleteRemote
 	DecisionConflict
-	DecisionDeleteMetadata
 	DecisionDeleteLocalAndCreateDirLocal
 	DecisionDeleteLocalAndDownloadRemote
 )
@@ -124,7 +123,7 @@ func (f CommitedFlag) ToString() string {
 	case CommitedNo:
 		return "CommitedNo"
 	case CommitedAwaitingRemoteDeletion:
-		return "CommitedAwaitingDeletion"
+		return "CommitedAwaitingRemoteDeletion"
 	}
 	return ""
 }
