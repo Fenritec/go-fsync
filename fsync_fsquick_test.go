@@ -222,6 +222,7 @@ func TestProviderQuick(t *testing.T) {
 		}
 
 		expectedDecisions := []fsync.Decision{
+			{RelativePath: "/a", Flag: fsync.DecisionCreateDirLocal},
 			{RelativePath: "/a/b", Flag: fsync.DecisionUploadLocal},
 			{RelativePath: "/a/c", Flag: fsync.DecisionConflict},
 			{RelativePath: "/a/d", Flag: fsync.DecisionDownloadRemote},
@@ -243,6 +244,7 @@ func TestProviderQuick(t *testing.T) {
 		}
 
 		expectedDecisions := []fsync.Decision{
+			{RelativePath: "/a", Flag: fsync.DecisionCreateDirLocal},
 			{RelativePath: "/a/b", Flag: fsync.DecisionCreateDirLocal},
 			{RelativePath: "/a/b/c", Flag: fsync.DecisionDownloadRemote},
 			{RelativePath: "/a/d", Flag: fsync.DecisionDownloadRemote},

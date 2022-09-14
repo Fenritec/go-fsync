@@ -44,7 +44,7 @@ func (p *provider) checkChanges(
 	takeDecision DecisionCallback) (deletedLocally, deletedRemotely bool, err error) {
 	select {
 	case <-ctx.Done():
-		return false, false, context.Canceled
+		return false, false, ctx.Err()
 	default:
 		// Continue
 	}
@@ -59,6 +59,7 @@ func (p *provider) checkChanges(
 		return false, false, err
 	}
 
+	// Reducing the dataset to limit cpu and depth for CheckDecision
 	if keepOnlyChildRPath != "" {
 		for i := len(lis) - 1; i >= 0; i-- {
 			if lis[i].RelativePath != keepOnlyChildRPath {
@@ -77,328 +78,27 @@ func (p *provider) checkChanges(
 
 	exp, imp, con := p.classifyGroups(lis, ris)
 
-	deleteLocals := []Decision{}
-	deleteRemotes := []Decision{}
-
 	// Exporting
-	expDeleted := 0
-	for _, e := range exp {
-		if e.Commited == CommitedYes {
-			if e.Dir {
-				deletedLocally, _, err := p.checkChanges(ctx, e.RelativePath, true, false, "", takeDecision)
-				if err != nil {
-					return false, false, err
-				}
-				if deletedLocally {
-					deleteLocals = append(deleteLocals, Decision{
-						Flag:            DecisionDeleteLocal,
-						RelativePath:    e.RelativePath,
-						RemoteValidEtag: "",
-						RemoteIsDir:     true,
-						Why:             newDecisionWhy(&e, nil),
-					})
-					expDeleted += 1
-				}
-			} else {
-				deleteLocals = append(deleteLocals, Decision{
-					Flag:            DecisionDeleteLocal,
-					RelativePath:    e.RelativePath,
-					RemoteValidEtag: e.Etag,
-					RemoteIsDir:     e.Dir,
-					Why:             newDecisionWhy(&e, nil),
-				})
-				expDeleted += 1
-			}
-		} else {
-			if e.Commited == CommitedAwaitingRemoteDeletion {
-				deleteLocals = append(deleteLocals, Decision{
-					Flag:            DecisionDeleteLocal,
-					RelativePath:    e.RelativePath,
-					RemoteValidEtag: e.Etag,
-					RemoteIsDir:     e.Dir,
-					Why:             newDecisionWhy(&e, nil),
-				})
-			} else {
-				if e.Dir {
-					if err := takeDecision(ctx, Decision{
-						Flag:            DecisionCreateDirRemote,
-						RelativePath:    e.RelativePath,
-						RemoteValidEtag: e.Etag,
-						RemoteIsDir:     e.Dir,
-						Why:             newDecisionWhy(&e, nil),
-					}); err != nil {
-						return false, false, err
-					}
-					if _, _, err := p.checkChanges(ctx, e.RelativePath, false, false, "", takeDecision); err != nil {
-						return false, false, err
-					}
-				} else {
-					if err := takeDecision(ctx, Decision{
-						Flag:            DecisionUploadLocal,
-						RelativePath:    e.RelativePath,
-						RemoteValidEtag: e.Etag,
-						RemoteIsDir:     e.Dir,
-						Why:             newDecisionWhy(&e, nil),
-					}); err != nil {
-						return false, false, err
-					}
-				}
-			}
-		}
+	deleteLocals, err := p.checkChangesExport(ctx, exp, takeDecision)
+	if err != nil {
+		return false, false, err
 	}
 
 	// Importing
-	for _, i := range imp {
-		if i.Dir {
-			if err := takeDecision(ctx, Decision{
-				Flag:            DecisionCreateDirLocal,
-				RelativePath:    i.RelativePath,
-				RemoteValidEtag: i.Etag,
-				RemoteIsDir:     i.Dir,
-				Why:             newDecisionWhy(nil, &i),
-			}); err != nil {
-				return false, false, err
-			}
-			if _, _, err := p.checkChanges(ctx, i.RelativePath, false, false, "", takeDecision); err != nil {
-				return false, false, err
-			}
-		} else {
-			if err := takeDecision(ctx, Decision{
-				Flag:            DecisionDownloadRemote,
-				RelativePath:    i.RelativePath,
-				RemoteValidEtag: i.Etag,
-				RemoteIsDir:     i.Dir,
-				Why:             newDecisionWhy(nil, &i),
-			}); err != nil {
-				return false, false, err
-			}
-		}
+	if err := p.checkChangesImport(ctx, imp, takeDecision); err != nil {
+		return false, false, err
 	}
 
 	// Managing conflicts (both side present)
-	conDeleted := 0
-	for _, c := range con {
-		if c.li.Commited == CommitedYes {
-			// If already commited on local side
-			// Assume the server is right
-			if c.li.Dir && !c.ri.Dir {
-				// We have a file instead of a dir on the server
-				// Check if we can delete the local dir and dowload the file locally
-				deletedLocally, _, err := p.checkChanges(ctx, c.li.RelativePath, true, false, "", func(ctx context.Context, d Decision) error { return ctx.Err() })
-				if err != nil {
-					return false, false, err
-				}
-				d := Decision{
-					RelativePath:    c.li.RelativePath,
-					RemoteValidEtag: c.ri.Etag,
-					RemoteIsDir:     c.ri.Dir,
-					Why:             newDecisionWhy(&c.li, &c.ri),
-				}
-				if deletedLocally {
-					d.Flag = DecisionDeleteLocalAndDownloadRemote
-				} else {
-					d.Flag = DecisionConflict
-				}
-				if err := takeDecision(ctx, d); err != nil {
-					return false, false, err
-				}
-			} else if !c.li.Dir && c.li.Dir {
-				// We have a dir instead of a file on the server
-				// Delete the local file and create a dir locally
-				if err := takeDecision(ctx, Decision{
-					Flag:            DecisionDeleteLocalAndCreateDirLocal,
-					RelativePath:    c.li.RelativePath,
-					RemoteValidEtag: c.ri.Etag,
-					RemoteIsDir:     c.ri.Dir,
-					Why:             newDecisionWhy(&c.li, &c.ri),
-				}); err != nil {
-					return false, false, err
-				}
-				if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
-					return false, false, err
-				}
-			} else {
-				// We have the same type on both side
-				if c.li.Etag != c.ri.Etag {
-					if err := takeDecision(ctx, Decision{
-						Flag:            DecisionDownloadRemote,
-						RelativePath:    c.li.RelativePath,
-						RemoteValidEtag: c.ri.Etag,
-						RemoteIsDir:     c.ri.Dir,
-						Why:             newDecisionWhy(&c.li, &c.ri),
-					}); err != nil {
-						return false, false, err
-					}
-				}
-				// If it is a dir continue the inspection
-				if c.li.Dir {
-					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
-						return false, false, err
-					}
-				}
-			}
-		} else {
-			// Nothing is commited from local
-			if !c.li.Dir && c.ri.Dir {
-				// File locally and dir remotely
-				if c.li.Commited == CommitedAwaitingRemoteDeletion {
-					// Local item is a file awaiting deleting
-					// We could delete it and request file download
-					if err := takeDecision(ctx, Decision{
-						Flag:            DecisionCreateDirLocal,
-						RelativePath:    c.li.RelativePath,
-						RemoteValidEtag: c.ri.Etag,
-						RemoteIsDir:     c.ri.Dir,
-						Why:             newDecisionWhy(&c.li, &c.ri),
-					}); err != nil {
-						return false, false, err
-					}
-					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
-						return false, false, err
-					}
-				} else {
-					if err := takeDecision(ctx, Decision{
-						Flag:            DecisionConflict,
-						RelativePath:    c.li.RelativePath,
-						RemoteValidEtag: c.ri.Etag,
-						RemoteIsDir:     c.ri.Dir,
-						Why:             newDecisionWhy(&c.li, &c.ri),
-					}); err != nil {
-						return false, false, err
-					}
-				}
-			} else if c.li.Dir && !c.ri.Dir {
-				// Dir locally and file remotely
-				if c.li.Commited == CommitedYes {
-					// If local dir is not awaiting deletion
-					deletedLocally, _, err := p.checkChanges(ctx, c.li.RelativePath, true, false, "", takeDecision)
-					if err != nil {
-						return false, false, err
-					}
-					if deletedLocally {
-						if err := takeDecision(ctx, Decision{
-							Flag:            DecisionDeleteLocalAndDownloadRemote,
-							RelativePath:    c.li.RelativePath,
-							RemoteValidEtag: c.ri.Etag,
-							RemoteIsDir:     c.ri.Dir,
-							Why:             newDecisionWhy(&c.li, &c.ri),
-						}); err != nil {
-							return false, false, err
-						}
-					} else {
-						if err := takeDecision(ctx, Decision{
-							Flag:            DecisionConflict,
-							RelativePath:    c.li.RelativePath,
-							RemoteValidEtag: c.ri.Etag,
-							RemoteIsDir:     c.ri.Dir,
-							Why:             newDecisionWhy(&c.li, &c.ri),
-						}); err != nil {
-							return false, false, err
-						}
-					}
-				} else if c.li.Commited == CommitedNo {
-					// If local dir is not commited and there
-					if err := takeDecision(ctx, Decision{
-						Flag:            DecisionConflict,
-						RelativePath:    c.li.RelativePath,
-						RemoteValidEtag: c.ri.Etag,
-						RemoteIsDir:     c.ri.Dir,
-						Why:             newDecisionWhy(&c.li, &c.ri),
-					}); err != nil {
-						return false, false, err
-					}
-				} else {
-					// If local dir is awaiting remote deletion then download the file
-					if err := takeDecision(ctx, Decision{
-						Flag:            DecisionDownloadRemote,
-						RelativePath:    c.li.RelativePath,
-						RemoteValidEtag: c.ri.Etag,
-						RemoteIsDir:     c.ri.Dir,
-						Why:             newDecisionWhy(&c.li, &c.ri),
-					}); err != nil {
-						return false, false, err
-					}
-				}
-			} else if c.li.Dir {
-				// Both are directories
-				if c.li.Commited == CommitedAwaitingRemoteDeletion {
-					// Local dir wants to be deleted
-					_, deletedRemotely, err := p.checkChanges(ctx, c.li.RelativePath, false, true, "", takeDecision)
-					if err != nil {
-						return false, false, err
-					}
-					if deletedRemotely {
-						deleteRemotes = append(deleteRemotes, Decision{
-							Flag:            DecisionDeleteRemote,
-							RelativePath:    c.li.RelativePath,
-							RemoteValidEtag: "",
-							RemoteIsDir:     true,
-							Why:             newDecisionWhy(&c.li, &c.ri),
-						})
-						conDeleted += 1
-					}
-				} else {
-					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
-						return false, false, err
-					}
-				}
-			} else {
-				// Both are files
-				if c.li.Commited == CommitedAwaitingRemoteDeletion {
-					if c.li.Etag == c.ri.Etag {
-						// Etags are matching so we can delete
-						deleteRemotes = append(deleteRemotes, Decision{
-							Flag:            DecisionDeleteRemote,
-							RelativePath:    c.li.RelativePath,
-							RemoteValidEtag: c.ri.Etag,
-							RemoteIsDir:     c.ri.Dir,
-							Why:             newDecisionWhy(&c.li, &c.ri),
-						})
-						conDeleted += 1
-					} else {
-						if err := takeDecision(ctx, Decision{
-							Flag:            DecisionDownloadRemote,
-							RelativePath:    c.li.RelativePath,
-							RemoteValidEtag: c.ri.Etag,
-							RemoteIsDir:     c.ri.Dir,
-							Why:             newDecisionWhy(&c.li, &c.ri),
-						}); err != nil {
-							return false, false, err
-						}
-					}
-				} else {
-					if c.li.Etag == c.ri.Etag {
-						// Assuming that li.Etag is containing the old etag
-						// So we upload
-						if err := takeDecision(ctx, Decision{
-							Flag:            DecisionUploadLocal,
-							RelativePath:    c.li.RelativePath,
-							RemoteValidEtag: c.ri.Etag,
-							RemoteIsDir:     c.ri.Dir,
-							Why:             newDecisionWhy(&c.li, &c.ri),
-						}); err != nil {
-							return false, false, err
-						}
-					} else {
-						if err := takeDecision(ctx, Decision{
-							Flag:            DecisionConflict,
-							RelativePath:    c.li.RelativePath,
-							RemoteValidEtag: c.ri.Etag,
-							RemoteIsDir:     c.ri.Dir,
-							Why:             newDecisionWhy(&c.li, &c.ri),
-						}); err != nil {
-							return false, false, err
-						}
-					}
-				}
-			}
-		}
+	deleteRemotes, err := p.checkChangesConflict(ctx, con, takeDecision)
+	if err != nil {
+		return false, false, err
 	}
 
 	// If nothing to import and nothing to export
 	// And there is no conflict
 	// it means we can delete the folder
-	if len(exp) == expDeleted && len(imp) == 0 && len(con) == conDeleted {
+	if len(exp) == len(deleteLocals) && len(imp) == 0 && len(con) == len(deleteRemotes) {
 		deletedLocally = tryLocalDeletion
 		deletedRemotely = tryRemoteDeletion
 	}
@@ -415,6 +115,321 @@ func (p *provider) checkChanges(
 		for _, deleteRemote := range deleteRemotes {
 			if err := takeDecision(ctx, deleteRemote); err != nil {
 				return false, false, err
+			}
+		}
+	}
+
+	return
+}
+
+func (p *provider) checkChangesExport(ctx context.Context, exp LocalItems, takeDecision DecisionCallback) (deleteLocals []Decision, err error) {
+	for _, e := range exp {
+		if e.Commited == CommitedYes {
+			if e.Dir {
+				deletedLocally, _, err := p.checkChanges(ctx, e.RelativePath, true, false, "", takeDecision)
+				if err != nil {
+					return nil, err
+				}
+				if deletedLocally {
+					deleteLocals = append(deleteLocals, Decision{
+						Flag:            DecisionDeleteLocal,
+						RelativePath:    e.RelativePath,
+						RemoteValidEtag: "",
+						RemoteIsDir:     true,
+						Why:             newDecisionWhy(&e, nil),
+					})
+				}
+			} else {
+				deleteLocals = append(deleteLocals, Decision{
+					Flag:            DecisionDeleteLocal,
+					RelativePath:    e.RelativePath,
+					RemoteValidEtag: e.Etag,
+					RemoteIsDir:     e.Dir,
+					Why:             newDecisionWhy(&e, nil),
+				})
+			}
+		} else if e.Commited == CommitedNo {
+			if e.Dir {
+				if err := takeDecision(ctx, Decision{
+					Flag:            DecisionCreateDirRemote,
+					RelativePath:    e.RelativePath,
+					RemoteValidEtag: e.Etag,
+					RemoteIsDir:     e.Dir,
+					Why:             newDecisionWhy(&e, nil),
+				}); err != nil {
+					return nil, err
+				}
+				if _, _, err := p.checkChanges(ctx, e.RelativePath, false, false, "", takeDecision); err != nil {
+					return nil, err
+				}
+			} else {
+				if err := takeDecision(ctx, Decision{
+					Flag:            DecisionUploadLocal,
+					RelativePath:    e.RelativePath,
+					RemoteValidEtag: e.Etag,
+					RemoteIsDir:     e.Dir,
+					Why:             newDecisionWhy(&e, nil),
+				}); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			// e.Commited == CommitedAwaitingRemoteDeletion
+			deleteLocals = append(deleteLocals, Decision{
+				Flag:            DecisionDeleteLocal,
+				RelativePath:    e.RelativePath,
+				RemoteValidEtag: e.Etag,
+				RemoteIsDir:     e.Dir,
+				Why:             newDecisionWhy(&e, nil),
+			})
+		}
+	}
+
+	return
+}
+
+func (p *provider) checkChangesImport(ctx context.Context, imp RemoteItems, takeDecision DecisionCallback) error {
+	for _, i := range imp {
+		if i.Dir {
+			if err := takeDecision(ctx, Decision{
+				Flag:            DecisionCreateDirLocal,
+				RelativePath:    i.RelativePath,
+				RemoteValidEtag: i.Etag,
+				RemoteIsDir:     i.Dir,
+				Why:             newDecisionWhy(nil, &i),
+			}); err != nil {
+				return err
+			}
+			if _, _, err := p.checkChanges(ctx, i.RelativePath, false, false, "", takeDecision); err != nil {
+				return err
+			}
+		} else {
+			// Ignoring remote documents without Etag
+			if i.Etag == "" {
+				continue
+			}
+			if err := takeDecision(ctx, Decision{
+				Flag:            DecisionDownloadRemote,
+				RelativePath:    i.RelativePath,
+				RemoteValidEtag: i.Etag,
+				RemoteIsDir:     i.Dir,
+				Why:             newDecisionWhy(nil, &i),
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (p *provider) checkChangesConflict(ctx context.Context, con Conflicts, takeDecision DecisionCallback) (deleteRemotes []Decision, err error) {
+	for _, c := range con {
+		if c.li.Commited == CommitedYes {
+			// If already commited on local side
+			// Assume the server is right
+			if c.li.Dir && !c.ri.Dir {
+				// We have a file instead of a dir on the server
+				// Check if we can delete the local dir and dowload the file locally
+				deletedLocally, _, err := p.checkChanges(ctx, c.li.RelativePath, true, false, "", func(ctx context.Context, d Decision) error { return ctx.Err() })
+				if err != nil {
+					return nil, err
+				}
+				d := Decision{
+					RelativePath:    c.li.RelativePath,
+					RemoteValidEtag: c.ri.Etag,
+					RemoteIsDir:     c.ri.Dir,
+					Why:             newDecisionWhy(&c.li, &c.ri),
+				}
+				if deletedLocally {
+					// Skipping download of empty remote etag
+					if c.ri.Etag == "" {
+						continue
+					}
+					d.Flag = DecisionDeleteLocalAndDownloadRemote
+				} else {
+					d.Flag = DecisionConflict
+				}
+				if err := takeDecision(ctx, d); err != nil {
+					return nil, err
+				}
+			} else if !c.li.Dir && c.li.Dir {
+				// We have a dir instead of a file on the server
+				// Delete the local file and create a dir locally
+				if err := takeDecision(ctx, Decision{
+					Flag:            DecisionDeleteLocalAndCreateDirLocal,
+					RelativePath:    c.li.RelativePath,
+					RemoteValidEtag: c.ri.Etag,
+					RemoteIsDir:     c.ri.Dir,
+					Why:             newDecisionWhy(&c.li, &c.ri),
+				}); err != nil {
+					return nil, err
+				}
+				if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
+					return nil, err
+				}
+			} else if !c.li.Dir {
+				// We have two files
+				// Skip if remote item has no etag
+				if c.ri.Etag == "" {
+					continue
+				}
+				if c.li.Etag != c.ri.Etag {
+					if err := takeDecision(ctx, Decision{
+						Flag:            DecisionDownloadRemote,
+						RelativePath:    c.li.RelativePath,
+						RemoteValidEtag: c.ri.Etag,
+						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
+					}); err != nil {
+						return nil, err
+					}
+				}
+			} else {
+				// If it is a dir continue the inspection
+				if c.li.Dir {
+					if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
+						return nil, err
+					}
+				}
+			}
+		} else if c.li.Commited == CommitedNo {
+			if !c.li.Dir && c.ri.Dir || c.li.Dir && !c.ri.Dir {
+				// File locally and dir remotely or vice versa
+				if err := takeDecision(ctx, Decision{
+					Flag:            DecisionConflict,
+					RelativePath:    c.li.RelativePath,
+					RemoteValidEtag: c.ri.Etag,
+					RemoteIsDir:     c.ri.Dir,
+					Why:             newDecisionWhy(&c.li, &c.ri),
+				}); err != nil {
+					return nil, err
+				}
+			} else if c.li.Dir {
+				// If both are dir
+				if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
+					return nil, err
+				}
+				if err := takeDecision(ctx, Decision{
+					Flag:            DecisionCreateDirLocal,
+					RelativePath:    c.li.RelativePath,
+					RemoteValidEtag: c.ri.Etag,
+					RemoteIsDir:     c.ri.Dir,
+					Why:             newDecisionWhy(&c.li, &c.ri),
+				}); err != nil {
+					return nil, err
+				}
+			} else {
+				// Both are files
+				if c.li.Etag == c.ri.Etag {
+					// Assuming that li.Etag is containing the old etag
+					// So we upload
+					if err := takeDecision(ctx, Decision{
+						Flag:            DecisionUploadLocal,
+						RelativePath:    c.li.RelativePath,
+						RemoteValidEtag: c.ri.Etag,
+						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
+					}); err != nil {
+						return nil, err
+					}
+				} else {
+					// Files were not in sync before local change commit
+					if err := takeDecision(ctx, Decision{
+						Flag:            DecisionConflict,
+						RelativePath:    c.li.RelativePath,
+						RemoteValidEtag: c.ri.Etag,
+						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
+					}); err != nil {
+						return nil, err
+					}
+				}
+			}
+		} else {
+			// c.li.Commited == CommitedAwaitingRemoteDeletion
+			if !c.li.Dir && c.ri.Dir {
+				// Local item is a file awaiting remote deletion
+				// We could delete it and request file download
+				if err := takeDecision(ctx, Decision{
+					Flag:            DecisionCreateDirLocal,
+					RelativePath:    c.li.RelativePath,
+					RemoteValidEtag: c.ri.Etag,
+					RemoteIsDir:     c.ri.Dir,
+					Why:             newDecisionWhy(&c.li, &c.ri),
+				}); err != nil {
+					return nil, err
+				}
+				if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
+					return nil, err
+				}
+			} else if c.li.Dir && !c.ri.Dir {
+				// If local dir is awaiting remote deletion then download the file
+				// If remote etag is empty skip
+				if c.ri.Etag == "" {
+					continue
+				}
+				if err := takeDecision(ctx, Decision{
+					Flag:            DecisionDownloadRemote,
+					RelativePath:    c.li.RelativePath,
+					RemoteValidEtag: c.ri.Etag,
+					RemoteIsDir:     c.ri.Dir,
+					Why:             newDecisionWhy(&c.li, &c.ri),
+				}); err != nil {
+					return nil, err
+				}
+			} else if c.li.Dir {
+				// Both are dir
+				_, deletedRemotely, err := p.checkChanges(ctx, c.li.RelativePath, false, true, "", takeDecision)
+				if err != nil {
+					return nil, err
+				}
+				if deletedRemotely {
+					deleteRemotes = append(deleteRemotes, Decision{
+						Flag:            DecisionDeleteRemote,
+						RelativePath:    c.li.RelativePath,
+						RemoteValidEtag: c.ri.Etag,
+						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
+					})
+				} else {
+					if err := takeDecision(ctx, Decision{
+						Flag:            DecisionCreateDirLocal,
+						RelativePath:    c.li.RelativePath,
+						RemoteValidEtag: c.ri.Etag,
+						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
+					}); err != nil {
+						return nil, err
+					}
+				}
+			} else {
+				// Both are files
+				if c.li.Etag == c.ri.Etag {
+					// Etags are matching so we can delete
+					deleteRemotes = append(deleteRemotes, Decision{
+						Flag:            DecisionDeleteRemote,
+						RelativePath:    c.li.RelativePath,
+						RemoteValidEtag: c.ri.Etag,
+						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
+					})
+				} else {
+					// Ignoring empty Etag
+					if c.ri.Etag == "" {
+						continue
+					}
+					if err := takeDecision(ctx, Decision{
+						Flag:            DecisionDownloadRemote,
+						RelativePath:    c.li.RelativePath,
+						RemoteValidEtag: c.ri.Etag,
+						RemoteIsDir:     c.ri.Dir,
+						Why:             newDecisionWhy(&c.li, &c.ri),
+					}); err != nil {
+						return nil, err
+					}
+				}
+
 			}
 		}
 	}
