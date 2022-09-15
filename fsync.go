@@ -294,7 +294,7 @@ func (p *provider) checkChangesConflict(ctx context.Context, con Conflicts, take
 				}
 			}
 		} else if c.li.Commited == CommitedNo {
-			if !c.li.Dir && c.ri.Dir || c.li.Dir && !c.ri.Dir {
+			if (!c.li.Dir && c.ri.Dir) || (c.li.Dir && !c.ri.Dir) {
 				// File locally and dir remotely or vice versa
 				if err := takeDecision(ctx, Decision{
 					Flag:            DecisionConflict,
