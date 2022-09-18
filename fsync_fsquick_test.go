@@ -326,4 +326,24 @@ func TestProviderQuick(t *testing.T) {
 
 		testScenarioQuick(t, localStatus, remoteStatus, expectedDecisions)
 	})
+
+	t.Run("No creation bug", func(t *testing.T) {
+		localStatus := fsync.LocalItems{
+			{RelativePath: "/a", Dir: true, Etag: "", Commited: fsync.CommitedYes},
+			{RelativePath: "/a/b", Dir: true, Etag: "", Commited: fsync.CommitedNo},
+			{RelativePath: "/a/b/c", Dir: true, Etag: "", Commited: fsync.CommitedNo},
+			{RelativePath: "/a/b/c/d", Dir: false, Etag: "v1", Commited: fsync.CommitedNo},
+		}
+
+		remoteStatus := fsync.RemoteItems{}
+
+		expectedDecisions := []fsync.Decision{
+			{RelativePath: "/a", Flag: fsync.DecisionCreateDirRemote},
+			{RelativePath: "/a/b", Flag: fsync.DecisionCreateDirRemote},
+			{RelativePath: "/a/b/c", Flag: fsync.DecisionCreateDirRemote},
+			{RelativePath: "/a/b/c/d", Flag: fsync.DecisionUploadLocal},
+		}
+
+		testScenario(t, localStatus, remoteStatus, expectedDecisions)
+	})
 }

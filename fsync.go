@@ -126,7 +126,12 @@ func (p *provider) checkChangesExport(ctx context.Context, exp LocalItems, takeD
 	for _, e := range exp {
 		if e.Commited == CommitedYes {
 			if e.Dir {
-				deletedLocally, _, err := p.checkChanges(ctx, e.RelativePath, true, false, "", takeDecision)
+				tmpDecisions := []Decision{}
+				partialTakeDecision := func(ctx context.Context, d Decision) error {
+					tmpDecisions = append(tmpDecisions, d)
+					return nil
+				}
+				deletedLocally, _, err := p.checkChanges(ctx, e.RelativePath, true, false, "", partialTakeDecision)
 				if err != nil {
 					return nil, err
 				}
@@ -138,6 +143,21 @@ func (p *provider) checkChangesExport(ctx context.Context, exp LocalItems, takeD
 						RemoteIsDir:     true,
 						Why:             newDecisionWhy(&e, nil),
 					})
+				} else {
+					if err := takeDecision(ctx, Decision{
+						Flag:            DecisionCreateDirRemote,
+						RelativePath:    e.RelativePath,
+						RemoteValidEtag: "",
+						RemoteIsDir:     true,
+						Why:             newDecisionWhy(&e, nil),
+					}); err != nil {
+						return nil, err
+					}
+				}
+				for _, d := range tmpDecisions {
+					if err := takeDecision(ctx, d); err != nil {
+						return nil, err
+					}
 				}
 			} else {
 				deleteLocals = append(deleteLocals, Decision{
