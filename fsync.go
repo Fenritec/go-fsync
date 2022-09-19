@@ -327,9 +327,6 @@ func (p *provider) checkChangesConflict(ctx context.Context, con Conflicts, take
 				}
 			} else if c.li.Dir {
 				// If both are dir
-				if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
-					return nil, err
-				}
 				if err := takeDecision(ctx, Decision{
 					Flag:            DecisionCreateDirLocal,
 					RelativePath:    c.li.RelativePath,
@@ -337,6 +334,9 @@ func (p *provider) checkChangesConflict(ctx context.Context, con Conflicts, take
 					RemoteIsDir:     c.ri.Dir,
 					Why:             newDecisionWhy(&c.li, &c.ri),
 				}); err != nil {
+					return nil, err
+				}
+				if _, _, err := p.checkChanges(ctx, c.li.RelativePath, false, false, "", takeDecision); err != nil {
 					return nil, err
 				}
 			} else {
@@ -400,11 +400,21 @@ func (p *provider) checkChangesConflict(ctx context.Context, con Conflicts, take
 				}
 			} else if c.li.Dir {
 				// Both are dir
-				_, deletedRemotely, err := p.checkChanges(ctx, c.li.RelativePath, false, true, "", takeDecision)
+				tmpDecisions := []Decision{}
+				partialTakeDecision := func(ctx context.Context, d Decision) error {
+					tmpDecisions = append(tmpDecisions, d)
+					return nil
+				}
+				_, deletedRemotely, err := p.checkChanges(ctx, c.li.RelativePath, false, true, "", partialTakeDecision)
 				if err != nil {
 					return nil, err
 				}
 				if deletedRemotely {
+					for _, d := range tmpDecisions {
+						if err := takeDecision(ctx, d); err != nil {
+							return nil, err
+						}
+					}
 					deleteRemotes = append(deleteRemotes, Decision{
 						Flag:            DecisionDeleteRemote,
 						RelativePath:    c.li.RelativePath,
@@ -421,6 +431,11 @@ func (p *provider) checkChangesConflict(ctx context.Context, con Conflicts, take
 						Why:             newDecisionWhy(&c.li, &c.ri),
 					}); err != nil {
 						return nil, err
+					}
+					for _, d := range tmpDecisions {
+						if err := takeDecision(ctx, d); err != nil {
+							return nil, err
+						}
 					}
 				}
 			} else {
